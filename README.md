@@ -1,2 +1,945 @@
 # 001
-潔牙系統 - Deployed by EZPage
+新潔牙系統 - Deployed by EZPage
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>班級潔牙登記、服務輪值與未潔牙月統計系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .tooth-card {
+      transition: all 0.12s ease-in-out;
+      user-select: none;
+    }
+    .tooth-card:active {
+      transform: scale(0.92);
+    }
+    @keyframes pulse-banner {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+    }
+    .animate-pulse-banner {
+      animation: pulse-banner 1.5s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans flex flex-col justify-between">
+
+  <!-- ========================================================= -->
+  <!-- 第一層：學生看板展示區 (標準一頁式滿屏、橫列輪值看板) -->
+  <!-- ========================================================= -->
+  <main class="h-screen p-2 flex flex-col justify-between overflow-hidden shrink-0">
+    
+    <!-- 頂部狀態列 -->
+    <header class="bg-white rounded-xl shadow-xs border border-slate-200 px-3 py-1.5 flex items-center justify-between shrink-0 relative">
+      <!-- 左側區域：標題、日期與向左移動的漱口水警示 -->
+      <div class="flex items-center gap-3">
+        <span class="text-xl">🪥</span>
+        <div>
+          <h1 class="text-base md:text-lg font-black text-slate-800 tracking-tight leading-none">
+            班級潔牙登記與服務輪值系統
+          </h1>
+          <span id="date-display" class="text-[11px] font-bold text-slate-500">📅 讀取中...</span>
+        </div>
+
+        <!-- 含氟漱口水醒目提醒橫幅 (已往左移至標題旁，不再遮擋右側資訊) -->
+        <div id="fluoride-banner" class="hidden animate-pulse-banner ml-2">
+          <div class="bg-rose-600 border-2 border-yellow-300 text-yellow-100 px-3 py-0.5 rounded-full shadow-md flex items-center gap-1.5">
+            <span class="text-sm">🧪</span>
+            <span class="text-xs md:text-sm font-black tracking-wider drop-shadow-sm">今日要用含氟漱口水</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右側統計與快速按鈕 (空間完全保留不被遮擋) -->
+      <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2 text-xs font-black">
+          <span class="text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+            已潔牙：<span id="done-count" class="text-sm font-black">0</span>
+          </span>
+          <span class="text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+            未潔牙：<span id="undone-count" class="text-sm font-black">0</span>
+          </span>
+        </div>
+
+        <label class="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg cursor-pointer text-xs font-bold text-indigo-900 transition">
+          <input type="checkbox" id="fluoride-toggle" class="w-4 h-4 accent-indigo-600 rounded">
+          <span>含氟漱口水</span>
+        </label>
+
+        <a href="#stats-and-settings" class="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1 rounded-lg shadow-xs transition flex items-center gap-1">
+          <span>⚙️ 分組設定與統計</span>
+          <span>↓</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- 全班潔牙點名板 (10人一排、藍底白牙) -->
+    <section class="bg-white rounded-xl shadow-xs border border-blue-200 px-3 py-1.5 shrink-0">
+      <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100 text-[11px] font-black text-slate-500">
+        <span class="flex items-center gap-1">🦷 全班潔牙點名板（點擊座號即時自動存檔，完成呈藍底白牙）</span>
+        <div class="flex items-center gap-3">
+          <span class="text-orange-600 font-bold">■ 橘底：打菜</span>
+          <span class="text-emerald-600 font-bold">■ 綠底：抬回</span>
+          <span class="text-rose-600 font-bold">■ 紅底：值日</span>
+          <span class="text-amber-700 font-bold">👑：輪值組長 (需參與工作並協助監督)</span>
+        </div>
+      </div>
+      <div id="teeth-grid" class="grid grid-cols-10 gap-1.5"></div>
+    </section>
+
+    <!-- 今日服務人員指派看板 (改為 3 大橫列顯示，放入一頁顯示內容) -->
+    <section class="bg-white rounded-xl shadow-xs border border-indigo-200 p-2.5 flex-1 flex flex-col justify-between min-h-0">
+      <div class="flex items-center justify-between pb-1 border-b border-slate-100 shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-base">📋</span>
+          <h2 class="text-xs md:text-sm font-black text-slate-800">今日服務人員輪值看板 (橫列顯示)</h2>
+          <span id="roster-status-badge" class="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+            載入中...
+          </span>
+        </div>
+        <span class="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+          😷 衛生規範：打菜與抬回人員請確實穿戴圍裙、帽子與口罩
+        </span>
+      </div>
+
+      <!-- 3 大橫列容器 -->
+      <div class="flex flex-col gap-1.5 flex-1 justify-around my-0.5 min-h-0">
+        
+        <!-- 第一列：打菜組 (橫列：湯飯菜菜菜) -->
+        <div class="bg-amber-50/90 border border-amber-300 rounded-lg px-3 py-1.5 flex items-center justify-between gap-3 shadow-2xs">
+          <div class="flex items-center gap-2 shrink-0 min-w-[200px]">
+            <span class="text-xs md:text-sm font-black text-amber-950 flex items-center gap-1">
+              🍱 打菜組 <span id="serve-group-tag" class="bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded text-[11px]">A組</span>
+            </span>
+            <span class="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">班長監督</span>
+            <span id="serve-leader-badge" class="text-[10px] bg-amber-100 text-amber-900 font-black px-1.5 py-0.5 rounded border border-amber-300">
+              👑 組長：--
+            </span>
+          </div>
+          <div class="text-[11px] text-amber-800 font-bold shrink-0 hidden md:block">順序：湯飯菜菜菜 👉</div>
+          <!-- 組員名冊與工作橫向展開 -->
+          <div id="serve-row-list" class="flex items-center gap-2 flex-1 justify-end overflow-x-auto"></div>
+        </div>
+
+        <!-- 第二列：抬回組 (橫列：湯湯飯菜菜) -->
+        <div class="bg-emerald-50/90 border border-emerald-300 rounded-lg px-3 py-1.5 flex items-center justify-between gap-3 shadow-2xs">
+          <div class="flex items-center gap-2 shrink-0 min-w-[200px]">
+            <span class="text-xs md:text-sm font-black text-emerald-950 flex items-center gap-1">
+              🪣 抬回組 <span id="return-group-tag" class="bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded text-[11px]">B組</span>
+            </span>
+            <span class="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.5 rounded">副班長監督</span>
+            <span id="return-leader-badge" class="text-[10px] bg-emerald-100 text-emerald-900 font-black px-1.5 py-0.5 rounded border border-emerald-300">
+              👑 組長：--
+            </span>
+          </div>
+          <div class="text-[11px] text-emerald-800 font-bold shrink-0 hidden md:block">順序：湯湯飯菜菜 👉</div>
+          <!-- 組員名冊與工作橫向展開 -->
+          <div id="return-row-list" class="flex items-center gap-2 flex-1 justify-end overflow-x-auto"></div>
+        </div>
+
+        <!-- 第三列：值日生組 (橫列：顯示所有座號，當天值日生特別高亮標示) -->
+        <div class="bg-rose-50/90 border-2 border-rose-300 rounded-lg px-3 py-1.5 flex items-center justify-between gap-3 shadow-2xs">
+          <div class="flex items-center gap-2 shrink-0 min-w-[200px]">
+            <span class="text-xs md:text-sm font-black text-rose-950 flex items-center gap-1">
+              🧹 值日生組 <span id="duty-group-tag" class="bg-rose-200 text-rose-900 px-1.5 py-0.5 rounded text-[11px]">C組</span>
+            </span>
+            <span class="text-[10px] bg-rose-200 text-rose-900 font-bold px-1.5 py-0.5 rounded">風紀監督</span>
+            <span id="duty-leader-badge" class="text-[10px] bg-rose-100 text-rose-900 font-black px-1.5 py-0.5 rounded border border-rose-300">
+              👑 組長：--
+            </span>
+          </div>
+          <div class="text-[11px] text-rose-800 font-bold shrink-0 hidden md:block">全組輪值（餐車推回+拖地）👉</div>
+          <!-- 該組全部座號橫向排列，當天值日者紅框大字標示 -->
+          <div id="duty-row-all-members" class="flex items-center gap-2 flex-1 justify-end overflow-x-auto"></div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+
+  <!-- ========================================================= -->
+  <!-- 第二層：教師分組管理後台 + 最下方每月未潔牙統計表 -->
+  <!-- ========================================================= -->
+  <section id="stats-and-settings" class="p-4 md:p-6 bg-slate-200 border-t-4 border-indigo-500 space-y-6">
+    <div class="max-w-7xl mx-auto bg-white rounded-2xl shadow-md border border-slate-300 p-5 space-y-5">
+      
+      <!-- 後台標題 -->
+      <div class="flex flex-wrap items-center justify-between pb-3 border-b-2 border-slate-100 gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">⚙️</span>
+          <div>
+            <h2 class="text-lg md:text-xl font-black text-slate-800">
+              教師管理後台：組別與輪值工作指派
+            </h2>
+            <p class="text-xs font-semibold text-slate-500">
+              先選組別再點座號直接入組，無需特別標註組長；設定完成後點選儲存
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btn-reassign-semester" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs transition">
+            🔄 學期結束：一鍵平均重分五組
+          </button>
+          <button id="btn-save-settings" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-sm transition">
+            💾 儲存分組與輪值設定
+          </button>
+          <a href="#" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl transition">
+            ↑ 回到學生看板
+          </a>
+        </div>
+      </div>
+
+      <!-- 人數與三組職責指派選單 -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+        <div>
+          <label class="block text-xs font-black text-slate-600 mb-1">班級總人數 (25~30人)：</label>
+          <select id="setting-student-count" class="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-indigo-700">
+            <option value="25">25 人</option>
+            <option value="26">26 人</option>
+            <option value="27" selected>27 人</option>
+            <option value="28">28 人</option>
+            <option value="29">29 人</option>
+            <option value="30">30 人</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-black text-amber-900 mb-1">🍱 本月【打菜組】：</label>
+          <select id="setting-serve-group" class="w-full bg-amber-50 border border-amber-300 rounded-lg p-1.5 text-xs font-black text-amber-950">
+            <option value="A" selected>A 組 (打菜)</option>
+            <option value="B">B 組 (打菜)</option>
+            <option value="C">C 組 (打菜)</option>
+            <option value="D">D 組 (打菜)</option>
+            <option value="E">E 組 (打菜)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-black text-emerald-900 mb-1">🪣 本月【抬回組】：</label>
+          <select id="setting-return-group" class="w-full bg-emerald-50 border border-emerald-300 rounded-lg p-1.5 text-xs font-black text-emerald-950">
+            <option value="A">A 組 (抬回)</option>
+            <option value="B" selected>B 組 (抬回)</option>
+            <option value="C">C 組 (抬回)</option>
+            <option value="D">D 組 (抬回)</option>
+            <option value="E">E 組 (抬回)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-black text-rose-900 mb-1">🧹 本月【值日生組】(紅色)：</label>
+          <select id="setting-duty-group" class="w-full bg-rose-50 border border-rose-300 rounded-lg p-1.5 text-xs font-black text-rose-950">
+            <option value="A">A 組 (值日)</option>
+            <option value="B">B 組 (值日)</option>
+            <option value="C" selected>C 組 (值日)</option>
+            <option value="D">D 組 (值日)</option>
+            <option value="E">E 組 (值日)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 以組別挑選座號操作區 -->
+      <div class="bg-indigo-50/60 border border-indigo-200 rounded-2xl p-4 space-y-4">
+        <div>
+          <div class="text-xs font-black text-indigo-950 mb-2">
+            👉 步驟 1：選擇要設定的組別標籤：
+          </div>
+          <div id="group-tabs" class="grid grid-cols-5 gap-2"></div>
+        </div>
+
+        <div class="bg-white border border-indigo-200 rounded-xl p-3 shadow-2xs">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black text-slate-700">
+              👉 步驟 2：點擊座號 ➔ 加入【<span id="current-active-group-label" class="text-indigo-600 font-black">A</span>組】：
+            </span>
+            <span class="text-[10px] text-slate-400">若點擊已在該組的座號則退出該組</span>
+          </div>
+          <div id="seat-number-pool" class="grid grid-cols-6 sm:grid-cols-10 gap-2"></div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-2 pb-1 border-b border-slate-100">
+            <span class="text-xs font-black text-slate-800">
+              📋 【<span id="current-active-group-title" class="text-indigo-600">A</span>組】現有名冊：
+              <span id="current-active-group-count" class="text-[11px] text-slate-500 font-bold ml-1">共 0 人</span>
+            </span>
+            <span class="text-[10px] text-slate-400">第一位為預設組長</span>
+          </div>
+          <div id="current-group-members-list" class="flex flex-wrap gap-2 min-h-[38px] items-center"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 各座號未潔牙次數統計表 -->
+    <div class="max-w-7xl mx-auto bg-white rounded-2xl shadow-md border-2 border-rose-200 p-5 space-y-4">
+      <div class="flex flex-wrap items-center justify-between border-b pb-3 border-slate-200 gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📊</span>
+          <div>
+            <h2 class="text-lg font-black text-slate-800">
+              各座號未潔牙次數統計表
+            </h2>
+            <p id="stats-range-desc" class="text-xs font-bold text-slate-500">
+              統計區間載入中...
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="flex items-center gap-1.5 text-xs font-black text-slate-700 bg-slate-50 border border-slate-300 px-2.5 py-1.5 rounded-lg">
+            <span>📅 選擇統計月份：</span>
+            <select id="select-stats-month" class="bg-white border border-slate-300 rounded px-2 py-0.5 text-xs font-black text-indigo-700 cursor-pointer">
+            </select>
+          </label>
+
+          <button id="btn-export-stats" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1">
+            <span>📄 匯出該月統計清單</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="stats-grid" class="grid grid-cols-5 sm:grid-cols-10 gap-2.5"></div>
+    </div>
+  </section>
+
+
+  <!-- ========================================================= -->
+  <!-- 第三層：JavaScript 核心資料模型與橫列排班邏輯 -->
+  <!-- ========================================================= -->
+  <script>
+    let totalStudents = 27;
+    let currentActiveGroup = 'A';
+    let selectedServeGroup = 'A';
+    let selectedReturnGroup = 'B';
+    let selectedDutyGroup = 'C';
+
+    const groupKeys = ['A', 'B', 'C', 'D', 'E'];
+    const serveJobs = ['盛湯 🥣', '盛飯 🍚', '夾菜① 🥬', '夾菜② 🥕', '夾菜③ 🍗'];
+    const returnJobs = ['抬湯桶① 🪣', '抬湯桶② 🪣', '抬飯桶 🍚', '抬菜盆① 🍱', '抬菜盆② 🍱'];
+
+    let classGroups = { 'A': [], 'B': [], 'C': [], 'D': [], 'E': [] };
+    let todayTeethStatus = {};
+    let currentSelectedMonth = getTodayString().substring(0, 7);
+
+    const WHITE_TOOTH_SVG = `
+      <svg class="w-4 h-4 text-white drop-shadow-xs" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C8.5 2 6 4.2 6 7.5C6 9.2 6.6 11 7.2 12.8C7.8 14.8 8.5 17.2 8.5 20C8.5 21.1 9.4 22 10.5 22C11.3 22 12 21.4 12.2 20.6L12.7 18C12.8 17.4 13.6 17.4 13.7 18L14.2 20.6C14.4 21.4 15.1 22 15.9 22C17 22 17.9 21.1 17.9 20C17.9 17.2 18.6 14.8 19.2 12.8C19.8 11 20.4 9.2 20.4 7.5C20.4 4.2 17.9 2 12.4 2H12Z"/>
+      </svg>
+    `;
+
+    const GRAY_TOOTH_SVG = `
+      <svg class="w-4 h-4 text-slate-300" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C8.5 2 6 4.2 6 7.5C6 9.2 6.6 11 7.2 12.8C7.8 14.8 8.5 17.2 8.5 20C8.5 21.1 9.4 22 10.5 22C11.3 22 12 21.4 12.2 20.6L12.7 18C12.8 17.4 13.6 17.4 13.7 18L14.2 20.6C14.4 21.4 15.1 22 15.9 22C17 22 17.9 21.1 17.9 20C17.9 17.2 18.6 14.8 19.2 12.8C19.8 11 20.4 9.2 20.4 7.5C20.4 4.2 17.9 2 12.4 2H12Z"/>
+      </svg>
+    `;
+
+    function getTodayString() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function initSystem() {
+      const todayStr = getTodayString();
+      const now = new Date();
+      const weekStrs = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+      document.getElementById('date-display').textContent = `📅 ${todayStr} ${weekStrs[now.getDay()]}`;
+
+      const savedCount = localStorage.getItem('class_total_students');
+      if (savedCount) {
+        totalStudents = parseInt(savedCount);
+        document.getElementById('setting-student-count').value = totalStudents;
+      }
+
+      const savedGroups = localStorage.getItem('class_groups_data');
+      if (savedGroups) {
+        try { classGroups = JSON.parse(savedGroups); } catch(e) { resetGroupsEqually(); }
+      } else {
+        resetGroupsEqually();
+      }
+
+      const sServe = localStorage.getItem('duty_serve_group');
+      const sReturn = localStorage.getItem('duty_return_group');
+      const sDuty = localStorage.getItem('duty_duty_group');
+      if (sServe) selectedServeGroup = sServe;
+      if (sReturn) selectedReturnGroup = sReturn;
+      if (sDuty) selectedDutyGroup = sDuty;
+
+      document.getElementById('setting-serve-group').value = selectedServeGroup;
+      document.getElementById('setting-return-group').value = selectedReturnGroup;
+      document.getElementById('setting-duty-group').value = selectedDutyGroup;
+
+      checkMidnightReset();
+
+      const savedFluoride = localStorage.getItem('brush_record_fluoride');
+      const isFluoride = (savedFluoride !== null) ? JSON.parse(savedFluoride) : false;
+      document.getElementById('fluoride-toggle').checked = isFluoride;
+      toggleFluorideBanner(isFluoride);
+
+      renderStudentBoard();
+      renderTeacherModule();
+      renderMonthlyStats();
+
+      scheduleMidnightChecker();
+    }
+
+    function checkMidnightReset() {
+      const todayStr = getTodayString();
+      const lastRecordedDate = localStorage.getItem('brush_active_date');
+      const savedStatus = localStorage.getItem('brush_active_status');
+
+      if (lastRecordedDate === todayStr && savedStatus) {
+        todayTeethStatus = JSON.parse(savedStatus);
+      } else {
+        todayTeethStatus = {};
+        for (let i = 1; i <= totalStudents; i++) {
+          todayTeethStatus[i] = false;
+        }
+        localStorage.setItem('brush_active_date', todayStr);
+        localStorage.setItem('brush_active_status', JSON.stringify(todayTeethStatus));
+      }
+    }
+
+    function scheduleMidnightChecker() {
+      setInterval(() => {
+        const currentToday = getTodayString();
+        const savedDate = localStorage.getItem('brush_active_date');
+        if (savedDate && savedDate !== currentToday) {
+          checkMidnightReset();
+          renderStudentBoard();
+          renderMonthlyStats();
+        }
+      }, 30000);
+    }
+
+    function resetGroupsEqually() {
+      classGroups = { 'A': [], 'B': [], 'C': [], 'D': [], 'E': [] };
+      for (let i = 1; i <= totalStudents; i++) {
+        const key = groupKeys[(i - 1) % 5];
+        classGroups[key].push(`${i}號`);
+      }
+    }
+
+    function findStudentGroup(memberStr) {
+      for (let key of groupKeys) {
+        if (classGroups[key].includes(memberStr)) return key;
+      }
+      return null;
+    }
+
+    function getTodayDutyMap(offset) {
+      const map = {};
+      const serveLeader = classGroups[selectedServeGroup]?.[0];
+      const returnLeader = classGroups[selectedReturnGroup]?.[0];
+      const dutyLeader = classGroups[selectedDutyGroup]?.[0];
+
+      const serveMembers = classGroups[selectedServeGroup] || [];
+      serveJobs.forEach((job, idx) => {
+        if (serveMembers.length > 0) {
+          const mem = serveMembers[(offset + idx) % serveMembers.length];
+          const num = parseInt(mem);
+          const isLeader = (mem === serveLeader);
+          if (!isNaN(num)) {
+            map[num] = {
+              type: 'serve',
+              isLeader: isLeader,
+              text: isLeader ? `👑組長•打菜:${job.split(' ')[0]}` : `打菜:${job.split(' ')[0]}`
+            };
+          }
+        }
+      });
+
+      const returnMembers = classGroups[selectedReturnGroup] || [];
+      returnJobs.forEach((job, idx) => {
+        if (returnMembers.length > 0) {
+          const mem = returnMembers[(offset + idx) % returnMembers.length];
+          const num = parseInt(mem);
+          const isLeader = (mem === returnLeader);
+          if (!isNaN(num)) {
+            map[num] = {
+              type: 'return',
+              isLeader: isLeader,
+              text: isLeader ? `👑組長•抬回:${job.split(' ')[0]}` : `抬回:${job.split(' ')[0]}`
+            };
+          }
+        }
+      });
+
+      const dutyMembers = classGroups[selectedDutyGroup] || [];
+      if (dutyMembers.length > 0) {
+        const mem = dutyMembers[offset % dutyMembers.length];
+        const num = parseInt(mem);
+        const isLeader = (mem === dutyLeader);
+        if (!isNaN(num)) {
+          map[num] = {
+            type: 'duty',
+            isLeader: isLeader,
+            text: isLeader ? `👑組長•值日生` : `輪值:值日生`
+          };
+        }
+      }
+
+      return map;
+    }
+
+    function getDutyBadgeStyle(dutyInfo, isDone) {
+      const type = dutyInfo.type;
+      const isLeader = dutyInfo.isLeader;
+
+      if (isDone) {
+        if (type === 'serve') return 'bg-amber-800 text-amber-100 border border-amber-400';
+        if (type === 'return') return 'bg-emerald-800 text-emerald-100 border border-emerald-400';
+        if (type === 'duty') return 'bg-rose-800 text-rose-100 border border-rose-400';
+      } else {
+        if (type === 'serve') return isLeader ? 'bg-amber-200 text-amber-950 font-black border-2 border-amber-500' : 'bg-orange-100 text-orange-900 border border-orange-300';
+        if (type === 'return') return isLeader ? 'bg-emerald-200 text-emerald-950 font-black border-2 border-emerald-500' : 'bg-emerald-100 text-emerald-900 border border-emerald-300';
+        if (type === 'duty') return isLeader ? 'bg-rose-200 text-rose-950 font-black border-2 border-rose-500' : 'bg-rose-100 text-rose-900 border border-rose-300';
+      }
+      return 'bg-slate-100 text-slate-700';
+    }
+
+    // --- 渲染首頁看板 (橫列三大輪值) ---
+    function renderStudentBoard() {
+      const now = new Date();
+      const day = now.getDay();
+      const offset = (day >= 1 && day <= 5) ? (day - 1) : 0;
+      const weekStrs = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+      const dayName = (day >= 1 && day <= 5) ? weekStrs[day] : '星期一(示範)';
+
+      document.getElementById('roster-status-badge').textContent = `${dayName}（第 ${offset + 1} 位起輪）`;
+      document.getElementById('serve-group-tag').textContent = `${selectedServeGroup}組`;
+      document.getElementById('return-group-tag').textContent = `${selectedReturnGroup}組`;
+      document.getElementById('duty-group-tag').textContent = `${selectedDutyGroup}組`;
+
+      const serveLeader = classGroups[selectedServeGroup]?.[0] || '無';
+      const returnLeader = classGroups[selectedReturnGroup]?.[0] || '無';
+      const dutyLeader = classGroups[selectedDutyGroup]?.[0] || '無';
+
+      document.getElementById('serve-leader-badge').textContent = `👑 組長：${serveLeader}`;
+      document.getElementById('return-leader-badge').textContent = `👑 組長：${returnLeader}`;
+      document.getElementById('duty-leader-badge').textContent = `👑 組長：${dutyLeader}`;
+
+      const dutyMap = getTodayDutyMap(offset);
+
+      // 1. 潔牙方框網格
+      const grid = document.getElementById('teeth-grid');
+      grid.innerHTML = '';
+      let doneCount = 0;
+
+      for (let num = 1; num <= totalStudents; num++) {
+        const isDone = !!todayTeethStatus[num];
+        if (isDone) doneCount++;
+        const dutyInfo = dutyMap[num];
+
+        const card = document.createElement('div');
+        card.className = `tooth-card cursor-pointer flex flex-col items-center justify-between py-1 px-0.5 rounded-lg border transition-all ${
+          isDone 
+            ? 'bg-blue-600 border-blue-700 text-white shadow-xs' 
+            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+        }`;
+
+        card.innerHTML = `
+          <div class="flex items-center gap-0.5">
+            ${isDone ? WHITE_TOOTH_SVG : GRAY_TOOTH_SVG}
+            <span class="text-xs font-black ${isDone ? 'text-white' : 'text-slate-800'}">${num}</span>
+          </div>
+          <div class="w-full text-center mt-0.5">
+            ${dutyInfo ? `
+              <span class="inline-block text-[9px] font-black leading-tight px-1 rounded truncate max-w-full ${getDutyBadgeStyle(dutyInfo, isDone)}">
+                ${dutyInfo.text}
+              </span>
+            ` : `
+              <span class="text-[9px] leading-tight font-semibold ${isDone ? 'text-blue-100' : 'text-slate-400'}">
+                ${isDone ? '已潔牙' : '未登記'}
+              </span>
+            `}
+          </div>
+        `;
+
+        card.onclick = () => {
+          todayTeethStatus[num] = !todayTeethStatus[num];
+          saveTodayTeethStateDirectly();
+          renderStudentBoard();
+          renderMonthlyStats();
+        };
+
+        grid.appendChild(card);
+      }
+
+      document.getElementById('done-count').textContent = doneCount;
+      document.getElementById('undone-count').textContent = totalStudents - doneCount;
+
+      // 2. 第一橫列：打菜組 (橫向展開 5 個工作)
+      const serveRowContainer = document.getElementById('serve-row-list');
+      const curServeMems = classGroups[selectedServeGroup] || [];
+      serveRowContainer.innerHTML = serveJobs.map((job, idx) => {
+        const mem = curServeMems.length > 0 ? curServeMems[(offset + idx) % curServeMems.length] : '--';
+        return `
+          <div class="flex items-center gap-1.5 bg-white border border-amber-300 rounded-md px-2 py-1 shadow-2xs">
+            <span class="text-xs font-black text-slate-900">${mem}</span>
+            <span class="text-[11px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300">${job}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 3. 第二橫列：抬回組 (橫向展開 5 個工作)
+      const returnRowContainer = document.getElementById('return-row-list');
+      const curReturnMems = classGroups[selectedReturnGroup] || [];
+      returnRowContainer.innerHTML = returnJobs.map((job, idx) => {
+        const mem = curReturnMems.length > 0 ? curReturnMems[(offset + idx) % curReturnMems.length] : '--';
+        return `
+          <div class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-md px-2 py-1 shadow-2xs">
+            <span class="text-xs font-black text-slate-900">${mem}</span>
+            <span class="text-[11px] font-bold text-emerald-900 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300">${job}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 4. 第三橫列：值日生組 (顯示全組所有座號，當天值日生加粗紅框高亮)
+      const dutyRowContainer = document.getElementById('duty-row-all-members');
+      const curDutyMems = classGroups[selectedDutyGroup] || [];
+      const todayDutyIndex = offset % (curDutyMems.length || 1);
+
+      dutyRowContainer.innerHTML = curDutyMems.map((mem, idx) => {
+        const isTodayDuty = (idx === todayDutyIndex);
+        if (isTodayDuty) {
+          return `
+            <div class="flex items-center gap-1.5 bg-rose-600 text-white border-2 border-rose-700 rounded-md px-2.5 py-1 shadow-xs ring-2 ring-rose-300">
+              <span class="text-xs md:text-sm font-black">${mem}</span>
+              <span class="text-[10px] bg-yellow-300 text-rose-950 font-black px-1.5 py-0.2 rounded">★今日值日</span>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="flex items-center gap-1 bg-white border border-rose-200 text-slate-700 rounded-md px-2 py-1 shadow-2xs">
+              <span class="text-xs font-bold">${mem}</span>
+              <span class="text-[10px] text-slate-400">待命</span>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    function saveTodayTeethStateDirectly() {
+      const todayStr = getTodayString();
+      localStorage.setItem('brush_active_date', todayStr);
+      localStorage.setItem('brush_active_status', JSON.stringify(todayTeethStatus));
+
+      let historyRecords = {};
+      const savedHistory = localStorage.getItem('brush_history_records');
+      if (savedHistory) {
+        try { historyRecords = JSON.parse(savedHistory); } catch(e) { historyRecords = {}; }
+      }
+      historyRecords[todayStr] = todayTeethStatus;
+      localStorage.setItem('brush_history_records', JSON.stringify(historyRecords));
+    }
+
+    function updateMonthSelectOptions() {
+      const monthSelect = document.getElementById('select-stats-month');
+      if (!monthSelect) return;
+
+      let historyRecords = {};
+      const savedHistory = localStorage.getItem('brush_history_records');
+      if (savedHistory) {
+        try { historyRecords = JSON.parse(savedHistory); } catch(e) { historyRecords = {}; }
+      }
+
+      const monthsSet = new Set();
+      const thisMonth = getTodayString().substring(0, 7);
+      monthsSet.add(thisMonth);
+
+      Object.keys(historyRecords).forEach(dateStr => {
+        if (dateStr.length >= 7) monthsSet.add(dateStr.substring(0, 7));
+      });
+
+      const sortedMonths = Array.from(monthsSet).sort().reverse();
+      monthSelect.innerHTML = sortedMonths.map(mStr => {
+        const [y, m] = mStr.split('-');
+        const isSelected = (mStr === currentSelectedMonth) ? 'selected' : '';
+        return `<option value="${mStr}" ${isSelected}>${y} 年 ${parseInt(m)} 月</option>`;
+      }).join('');
+    }
+
+    document.getElementById('select-stats-month').onchange = (e) => {
+      currentSelectedMonth = e.target.value;
+      renderMonthlyStats();
+    };
+
+    function renderMonthlyStats() {
+      updateMonthSelectOptions();
+
+      const [selYear, selMonth] = currentSelectedMonth.split('-');
+      const thisMonthStr = getTodayString().substring(0, 7);
+      const isCurrentMonth = (currentSelectedMonth === thisMonthStr);
+      const todayDate = new Date().getDate();
+
+      if (isCurrentMonth) {
+        document.getElementById('stats-range-desc').textContent = 
+          `統計範圍：${selYear}年${parseInt(selMonth)}月01日 至 今日 (${parseInt(selMonth)}月${todayDate}日) 累積未潔牙次數`;
+      } else {
+        document.getElementById('stats-range-desc').textContent = 
+          `統計範圍：${selYear}年${parseInt(selMonth)}月 全月完整紀錄`;
+      }
+
+      let historyRecords = {};
+      const savedHistory = localStorage.getItem('brush_history_records');
+      if (savedHistory) {
+        try { historyRecords = JSON.parse(savedHistory); } catch(e) { historyRecords = {}; }
+      }
+      if (isCurrentMonth) {
+        historyRecords[getTodayString()] = todayTeethStatus;
+      }
+
+      const missedCountMap = {};
+      for (let i = 1; i <= totalStudents; i++) missedCountMap[i] = 0;
+
+      Object.keys(historyRecords).forEach(dateKey => {
+        if (dateKey.startsWith(currentSelectedMonth)) {
+          const dayData = historyRecords[dateKey];
+          for (let i = 1; i <= totalStudents; i++) {
+            if (!dayData[i]) missedCountMap[i]++;
+          }
+        }
+      });
+
+      const statsGrid = document.getElementById('stats-grid');
+      statsGrid.innerHTML = '';
+
+      for (let num = 1; num <= totalStudents; num++) {
+        const missed = missedCountMap[num];
+        const card = document.createElement('div');
+
+        let alertStyle = 'bg-slate-50 border-slate-200 text-slate-700';
+        if (missed >= 5) alertStyle = 'bg-rose-100 border-rose-400 text-rose-950 font-black shadow-xs';
+        else if (missed >= 3) alertStyle = 'bg-amber-100 border-amber-400 text-amber-950 font-black';
+        else if (missed === 0) alertStyle = 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold';
+
+        card.className = `p-2 rounded-xl border flex flex-col items-center justify-between text-center transition ${alertStyle}`;
+        card.innerHTML = `
+          <span class="text-xs font-bold text-slate-500">${num}號</span>
+          <span class="text-xl font-black my-0.5 ${missed > 0 ? 'text-rose-600' : 'text-emerald-600'}">
+            ${missed} <span class="text-[10px] font-normal text-slate-500">次</span>
+          </span>
+          <span class="text-[9px] px-1 py-0.2 rounded font-bold ${missed > 0 ? 'bg-rose-200/60 text-rose-900' : 'bg-emerald-200/60 text-emerald-900'}">
+            ${missed === 0 ? '全勤潔牙' : '未完成'}
+          </span>
+        `;
+        statsGrid.appendChild(card);
+      }
+    }
+
+    document.getElementById('btn-export-stats').onclick = () => {
+      let historyRecords = {};
+      const savedHistory = localStorage.getItem('brush_history_records');
+      if (savedHistory) {
+        try { historyRecords = JSON.parse(savedHistory); } catch(e) { historyRecords = {}; }
+      }
+      if (currentSelectedMonth === getTodayString().substring(0, 7)) {
+        historyRecords[getTodayString()] = todayTeethStatus;
+      }
+
+      const [selYear, selMonth] = currentSelectedMonth.split('-');
+      let text = `【${selYear}年${parseInt(selMonth)}月 班級未潔牙次數統計表】\n`;
+      text += `匯出時間：${new Date().toLocaleString()}\n`;
+      text += `-----------------------------------------\n`;
+
+      for (let i = 1; i <= totalStudents; i++) {
+        let missed = 0;
+        Object.keys(historyRecords).forEach(k => {
+          if (k.startsWith(currentSelectedMonth) && !historyRecords[k][i]) missed++;
+        });
+        text += `座號 ${String(i).padStart(2, ' ')} 號：未潔牙 ${missed} 次\n`;
+      }
+
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `潔牙統計_${currentSelectedMonth}.txt`;
+      a.click();
+    };
+
+    function renderTeacherModule() {
+      document.getElementById('current-active-group-label').textContent = currentActiveGroup;
+      document.getElementById('current-active-group-title').textContent = currentActiveGroup;
+
+      const tabsContainer = document.getElementById('group-tabs');
+      tabsContainer.innerHTML = groupKeys.map(key => {
+        const isActive = (key === currentActiveGroup);
+        const count = classGroups[key].length;
+        
+        let roleName = '';
+        if (key === selectedServeGroup) roleName = '🍱打菜';
+        if (key === selectedReturnGroup) roleName = '🪣抬回';
+        if (key === selectedDutyGroup) roleName = '🧹值日';
+
+        return `
+          <button onclick="switchActiveGroup('${key}')" 
+                  class="p-2.5 rounded-xl border-2 transition-all flex flex-col items-center justify-center ${
+                    isActive 
+                      ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-102 ring-2 ring-indigo-300' 
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-indigo-50'
+                  }">
+            <span class="text-base md:text-lg font-black">${key} 組</span>
+            <span class="text-xs font-bold mt-0.5 ${isActive ? 'text-indigo-100' : 'text-slate-500'}">
+              (${count}人) ${roleName}
+            </span>
+          </button>
+        `;
+      }).join('');
+
+      const poolContainer = document.getElementById('seat-number-pool');
+      poolContainer.innerHTML = '';
+
+      for (let num = 1; num <= totalStudents; num++) {
+        const memberStr = `${num}號`;
+        const belongingGroup = findStudentGroup(memberStr);
+        const isCurrent = (belongingGroup === currentActiveGroup);
+
+        const btn = document.createElement('button');
+        btn.onclick = () => handleSeatClick(memberStr);
+
+        let styleClass = '';
+        let badgeText = '';
+
+        if (isCurrent) {
+          styleClass = 'bg-indigo-600 border-indigo-700 text-white shadow-xs';
+          badgeText = `✓ ${currentActiveGroup}組`;
+        } else if (belongingGroup) {
+          styleClass = 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-indigo-50';
+          badgeText = `${belongingGroup}組`;
+        } else {
+          styleClass = 'bg-white border-dashed border-2 border-rose-300 text-rose-600 hover:bg-rose-50';
+          badgeText = '未分配';
+        }
+
+        btn.className = `p-1.5 rounded-lg border flex flex-col items-center justify-between transition text-center ${styleClass}`;
+        btn.innerHTML = `
+          <span class="text-sm font-black">${num}</span>
+          <span class="text-[10px] font-bold px-1 rounded ${isCurrent ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-600'}">
+            ${badgeText}
+          </span>
+        `;
+        poolContainer.appendChild(btn);
+      }
+
+      const currentList = classGroups[currentActiveGroup] || [];
+      document.getElementById('current-active-group-count').textContent = `共 ${currentList.length} 人`;
+      const curListContainer = document.getElementById('current-group-members-list');
+      curListContainer.innerHTML = '';
+
+      if (currentList.length === 0) {
+        curListContainer.innerHTML = '<span class="text-xs text-slate-400">目前尚無組員，請點擊上方座號加入。</span>';
+      } else {
+        currentList.forEach(mem => {
+          const badge = document.createElement('div');
+          badge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border bg-slate-50 border-slate-200 text-slate-800 shadow-2xs';
+          badge.innerHTML = `
+            <span class="text-xs font-black">${mem}</span>
+            <button onclick="removeMember('${mem}')" title="退出該組" class="text-slate-400 hover:text-rose-600 font-black ml-1 text-xs">
+              ✕
+            </button>
+          `;
+          curListContainer.appendChild(badge);
+        });
+      }
+    }
+
+    window.switchActiveGroup = function(groupKey) {
+      currentActiveGroup = groupKey;
+      renderTeacherModule();
+    };
+
+    window.handleSeatClick = function(memberStr) {
+      const belonging = findStudentGroup(memberStr);
+
+      if (belonging === currentActiveGroup) {
+        classGroups[currentActiveGroup] = classGroups[currentActiveGroup].filter(m => m !== memberStr);
+      } else {
+        if (belonging) {
+          classGroups[belonging] = classGroups[belonging].filter(m => m !== memberStr);
+        }
+        classGroups[currentActiveGroup].push(memberStr);
+        classGroups[currentActiveGroup].sort((a, b) => parseInt(a) - parseInt(b));
+      }
+
+      renderTeacherModule();
+      renderStudentBoard();
+    };
+
+    window.removeMember = function(memberStr) {
+      classGroups[currentActiveGroup] = classGroups[currentActiveGroup].filter(m => m !== memberStr);
+      renderTeacherModule();
+      renderStudentBoard();
+    };
+
+    document.getElementById('setting-student-count').onchange = (e) => {
+      totalStudents = parseInt(e.target.value);
+      resetGroupsEqually();
+      renderTeacherModule();
+      renderStudentBoard();
+      renderMonthlyStats();
+    };
+
+    document.getElementById('setting-serve-group').onchange = (e) => {
+      selectedServeGroup = e.target.value;
+      renderTeacherModule();
+      renderStudentBoard();
+    };
+
+    document.getElementById('setting-return-group').onchange = (e) => {
+      selectedReturnGroup = e.target.value;
+      renderTeacherModule();
+      renderStudentBoard();
+    };
+
+    document.getElementById('setting-duty-group').onchange = (e) => {
+      selectedDutyGroup = e.target.value;
+      renderTeacherModule();
+      renderStudentBoard();
+    };
+
+    document.getElementById('btn-reassign-semester').onclick = () => {
+      if (confirm('確定要將全班座號重新平均分配到 A、B、C、D、E 五組嗎？')) {
+        resetGroupsEqually();
+        renderTeacherModule();
+        renderStudentBoard();
+        alert('✅ 已重新平均分組！請點選「儲存分組與輪值設定」存檔。');
+      }
+    };
+
+    document.getElementById('btn-save-settings').onclick = () => {
+      localStorage.setItem('class_total_students', totalStudents);
+      localStorage.setItem('class_groups_data', JSON.stringify(classGroups));
+      localStorage.setItem('duty_serve_group', selectedServeGroup);
+      localStorage.setItem('duty_return_group', selectedReturnGroup);
+      localStorage.setItem('duty_duty_group', selectedDutyGroup);
+      alert('✅ 分組名冊與每月輪值工作設定已成功永久存檔！');
+    };
+
+    function toggleFluorideBanner(show) {
+      const banner = document.getElementById('fluoride-banner');
+      if (show) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
+
+    document.getElementById('fluoride-toggle').onchange = (e) => {
+      const isChecked = e.target.checked;
+      toggleFluorideBanner(isChecked);
+      localStorage.setItem('brush_record_fluoride', JSON.stringify(isChecked));
+    };
+
+    initSystem();
+  </script>
+</body>
+</html>
